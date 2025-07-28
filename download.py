@@ -31,6 +31,7 @@ from pathlib import Path
 from typing import Optional
 
 import requests
+from tqdm import tqdm
 
 # --------------------------- helpers -----------------------------------------
 
@@ -52,41 +53,98 @@ def download_pdfs(input_file: Path, out_root: Path) -> None:
 
     current_category: Optional[str] = None
     session = requests.Session()
+    failed_downloads = []
 
-    for lineno, raw_line in enumerate(input_file.read_text(encoding="utf-8").splitlines(), start=1):
-        # Detect a new category header (## Physics‑aware Policy, etc.)
+    lines = input_file.read_text(encoding="utf-8").splitlines()
+    
+    # First pass: count total papers to download
+    total_papers = 0
+    for raw_line in lines:
         cat_match = cat_regex.match(raw_line)
         if cat_match:
             current_category = slugify(cat_match.group(1))
             continue
-
-        # Detect paper entry lines that contain a [paper](URL) hyperlink
+            
         line_match = line_regex.match(raw_line)
         if line_match and current_category:
             year, title, url = line_match.groups()
-            year = year.strip()
             title_clean = slugify(title.strip())
-
             target_dir = out_root / current_category / year
-            target_dir.mkdir(parents=True, exist_ok=True)
             pdf_path = target_dir / f"{title_clean}.pdf"
+            
+            # Only count if not already downloaded
+            if not pdf_path.exists():
+                total_papers += 1
 
-            if pdf_path.exists():
-                print(f"[skip] {pdf_path.relative_to(out_root)} (already downloaded)")
+    # Second pass: download papers with progress bar
+    current_category = None
+    processed_papers = 0
+    
+    with tqdm(total=total_papers, desc="📥 Downloading papers", unit="paper") as pbar:
+        for lineno, raw_line in enumerate(lines, start=1):
+            # Detect a new category header (## Physics‑aware Policy, etc.)
+            cat_match = cat_regex.match(raw_line)
+            if cat_match:
+                current_category = slugify(cat_match.group(1))
                 continue
 
-            print(f"[dl ] {title.strip()} -> {pdf_path.relative_to(out_root)}")
-            try:
-                with session.get(url, stream=True, timeout=30) as resp:
-                    resp.raise_for_status()
-                    with pdf_path.open("wb") as fp:
-                        for chunk in resp.iter_content(chunk_size=8192):
-                            fp.write(chunk)
-            except Exception as exc:
-                print(f"[err] line {lineno}: failed to download {url} :: {exc}", file=sys.stderr)
-                # Optionally, clean up partial downloads
+            # Detect paper entry lines that contain a [paper](URL) hyperlink
+            line_match = line_regex.match(raw_line)
+            if line_match and current_category:
+                year, title, url = line_match.groups()
+                year = year.strip()
+                title_clean = slugify(title.strip())
+
+                target_dir = out_root / current_category / year
+                target_dir.mkdir(parents=True, exist_ok=True)
+                pdf_path = target_dir / f"{title_clean}.pdf"
+
                 if pdf_path.exists():
-                    pdf_path.unlink(missing_ok=True)
+                    tqdm.write(f"⏭️  [skip] {title.strip()} (already downloaded)")
+                    continue
+
+                tqdm.write(f"📄 {title.strip()}")
+                try:
+                    resp = session.get(url, stream=True, timeout=30)
+                    resp.raise_for_status()
+                    
+                    # Get the total file size from headers
+                    total_size = int(resp.headers.get('content-length', 0))
+                    
+                    with pdf_path.open("wb") as fp:
+                        # Create progress bar for this file
+                        with tqdm(
+                            total=total_size,
+                            unit='B',
+                            unit_scale=True,
+                            desc=f"   📥 {title_clean[:30]}...",
+                            leave=False,
+                            ncols=100
+                        ) as file_pbar:
+                            for chunk in resp.iter_content(chunk_size=8192):
+                                fp.write(chunk)
+                                file_pbar.update(len(chunk))
+                    
+                    processed_papers += 1
+                    pbar.set_postfix({"Success": processed_papers})
+                    pbar.update(1)
+                    
+                except Exception as exc:
+                    tqdm.write(f"❌ [err] line {lineno}: failed to download {title.strip()} :: {exc}")
+                    failed_downloads.append((current_category, title.strip(), url))
+                    # Optionally, clean up partial downloads
+                    if pdf_path.exists():
+                        pdf_path.unlink(missing_ok=True)
+                    pbar.update(1)
+
+    # Summary of failed downloads
+    if failed_downloads:
+        print(f"\n🚨 Summary of failed downloads:")
+        for category, title, url in failed_downloads:
+            print(f"   - [{category}] {title}")
+            print(f"     📎 {url}")
+    else:
+        print(f"\n🎉 All papers downloaded successfully!")
 
 # --------------------------- CLI wrapper -------------------------------------
 
@@ -100,6 +158,13 @@ if __name__ == "__main__":
     args = parse_args()
     if not args.input.exists():
         sys.exit(f"Input file {args.input} does not exist")
+    
+    # Check if tqdm is installed
+    try:
+        from tqdm import tqdm as _
+    except ImportError:
+        sys.exit("This script requires the tqdm package. Install it with 'pip install tqdm'")
+        
     try:
         download_pdfs(args.input, args.out)
     except KeyboardInterrupt:

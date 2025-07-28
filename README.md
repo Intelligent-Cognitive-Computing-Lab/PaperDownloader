@@ -1,94 +1,156 @@
-# Paper Downloader
+# Academic Papers Downloader
 
-A command-line Python script to automate the downloading of academic papers from a list of URLs. The script parses a given file for URLs, identifies the host (e.g., arXiv, OpenReview), and downloads the corresponding PDF.
+一个自动化下载学术论文的 Python 命令行工具。该脚本可以解析 Markdown 格式的论文列表，并按照分类和年份组织下载的 PDF 文件。
 
-## Features
+## ✨ 功能特性
 
-*   **Configurable Inputs**: Specify the input file and save directory via command-line arguments.
-*   **Multi-Site Support**: Automatically handles different download logic for various academic sites.
-*   **Intelligent Naming**: Saves PDFs with meaningful names derived from their URLs (e.g., `1706.03762.pdf`).
-*   **Robust**: Skips unsupported URLs and handles download failures gracefully.
+- **📁 智能文件组织**: 自动按照 `分类/年份/论文标题.pdf` 的目录结构保存文件
+- **📊 实时进度显示**: 使用进度条显示下载进度，支持文件级和整体进度
+- **⚡ 断点续传**: 自动跳过已下载的文件，避免重复下载
+- **🔄 会话保持**: 使用 requests Session 提高下载效率
+- **❌ 错误处理**: 优雅处理下载失败，提供详细的错误报告
+- **🎯 灵活输入**: 支持 Markdown 格式的论文列表
 
-### Supported Websites
-*   arXiv
-*   Sci-Hub
-*   OpenReview
+## 📋 系统要求
 
-## Prerequisites
+- Python 3.6+
+- 依赖包：`requests`, `tqdm`
 
-*   Python 3
-*   `pip` for installing packages
+## 🚀 安装
 
-## Installation
+1. **克隆仓库**
+   ```bash
+   git clone <repository_url>
+   cd papers_download
+   ```
 
-1.  **Clone the repository or download the script:**
-    ```bash
-    git clone <repository_url>
-    cd <repository_directory>
-    ```
-    Or simply save `download.py` to your local machine.
+2. **安装依赖**
+   ```bash
+   pip install requests tqdm
+   ```
 
-2.  **Install required libraries:**
-    ```bash
-    pip install requests beautifulsoup4
-    ```
+## 📖 使用方法
 
-## Usage
+### 基本用法
 
-The script is controlled via the command line.
-
-### Command-Line Arguments
-
-*   `--file FILE`: Specifies the path to the input file containing the list of paper URLs.
-    *   **Default**: `papers.md`
-*   `--save_dir SAVE_DIR`: Specifies the directory where the downloaded PDF files will be saved. The directory will be created if it doesn't exist.
-    *   **Default**: The current directory (`.`)
-
-### Input File Format
-
-The input file (e.g., `papers.md`) must contain one paper URL per line. The script will process each line as a separate URL. Empty lines are ignored.
-
-**Example `papers.md`:**
-```
-https://arxiv.org/abs/1706.03762
-https://openreview.net/forum?id=HkMA2i-R-
-https://sci-hub.se/10.1109/5.771073
+```bash
+python download.py papers.md --out downloads
 ```
 
-### Examples
+### 命令行参数
 
-1.  **Basic Usage (Default settings)**
-    *   Reads URLs from `papers.md`.
-    *   Saves PDFs to the current directory.
-    ```bash
-    python download.py
-    ```
+- `input`: 输入的 Markdown 文件路径（必需）
+- `--out`: 输出目录，默认为 `downloads`
 
-2.  **Using a Custom Input File**
-    *   Reads URLs from `my_reading_list.txt`.
-    *   Saves PDFs to the current directory.
-    ```bash
-    python download.py --file my_reading_list.txt
-    ```
+### 输入文件格式
 
-3.  **Saving to a Specific Directory**
-    *   Reads URLs from `papers.md`.
-    *   Saves PDFs to a folder named `downloaded_papers`.
-    ```bash
-    python download.py --save_dir downloaded_papers
-    ```
+脚本支持以下 Markdown 格式：
 
-4.  **Using a Custom Input File and Save Directory**
-    *   Reads URLs from `my_reading_list.txt`.
-    *   Saves PDFs to `downloaded_papers`.
-    ```bash
-    python download.py --file my_reading_list.txt --save_dir downloaded_papers
-    ```
+```markdown
+## 分类名称
 
-## How It Works
+- [年份] 论文标题 [[paper](论文URL)]
+- [年份] 论文标题 [[documentation](文档URL)]
+```
 
-The script reads the specified input file line by line. For each URL, it checks the domain name (`arxiv.org`, `sci-hub.se`, etc.) to determine which parsing function to use. It then sends a request to the URL, parses the returned HTML using BeautifulSoup to find the direct link to the PDF, and downloads the file.
+**示例：**
 
-If a URL is from an unsupported website, it will print a warning and skip to the next one.
+```markdown
+## Survey
+
+- [2025] Foundation Model Driven Robotics: A Comprehensive Review [[paper](https://arxiv.org/pdf/2507.10087)]
+- [2025] A Survey on Vision-Language-Action Models [[paper](https://arxiv.org/pdf/2507.01925)]
+
+## Reinforcement Learning
+
+- [2024] Deep Q-Networks for Robotic Control [[paper](https://arxiv.org/pdf/example.pdf)]
+```
+
+## 📂 输出结构
+
+下载的文件将按以下结构组织：
+
+```
+output_directory/
+├── Survey/
+│   ├── 2025/
+│   │   ├── Foundation_Model_Driven_Robotics_A_Comprehensive_Review.pdf
+│   │   └── A_Survey_on_Vision_Language_Action_Models.pdf
+│   └── 2024/
+│       └── ...
+└── Reinforcement_Learning/
+    └── 2024/
+        └── Deep_Q_Networks_for_Robotic_Control.pdf
+```
+
+## 🎯 使用示例
+
+1. **下载到默认目录**
+   ```bash
+   python download.py papers.md
+   ```
+
+2. **指定输出目录**
+   ```bash
+   python download.py papers.md --out ./my_papers
+   ```
+
+3. **下载到当前目录**
+   ```bash
+   python download.py papers.md --out .
+   ```
+
+## 🔧 工作原理
+
+1. **解析阶段**: 脚本首先解析 Markdown 文件，提取分类、年份、标题和 URL
+2. **预处理**: 统计需要下载的文件数量（跳过已存在的文件）
+3. **下载阶段**: 
+   - 为每个论文创建对应的目录结构
+   - 使用会话保持提高下载效率
+   - 实时显示下载进度
+   - 处理下载错误并记录失败信息
+4. **报告阶段**: 显示下载结果和失败文件列表
+
+## 📊 输出信息
+
+脚本运行时会显示：
+
+- 📥 总体下载进度条
+- ⏭️ 跳过已下载的文件
+- 📄 当前下载的文件名
+- 📥 单个文件下载进度（带大小信息）
+- ❌ 下载失败的文件及原因
+- 🎉 下载完成摘要
+
+## ⚠️ 注意事项
+
+- 脚本会自动创建必要的目录结构
+- 已存在的文件将被跳过，不会重复下载
+- 部分 URL 可能因为访问限制而下载失败（如 403 Forbidden、404 Not Found）
+- 论文标题会自动转换为文件系统友好的格式（ASCII 字符，下划线分隔）
+
+## 🐛 故障排除
+
+### 常见错误
+
+1. **ModuleNotFoundError**: 确保已安装 `requests` 和 `tqdm`
+   ```bash
+   pip install requests tqdm
+   ```
+
+2. **403/404 错误**: 某些 URL 可能需要特定的访问权限或已失效
+3. **超时错误**: 网络连接问题，脚本会自动重试
+
+### 调试提示
+
+- 检查输入文件格式是否正确
+- 确认网络连接正常
+- 查看错误报告中的详细信息
+
+## 📄 许可证
+
+[在此添加许可证信息]
 
 ---
+
+如有问题或建议，请提交 Issue 或 Pull Request。
